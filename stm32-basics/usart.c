@@ -1,4 +1,4 @@
-#include"stm32f10x.h"//包含STM32F10x系列的头文件，定义了所有的寄存地址
+/*#include"stm32f10x.h"//包含STM32F10x系列的头文件，定义了所有的寄存地址
 #include<stdio.h>//为使用printf函数
 
 //1.简易软件延时函数
@@ -66,4 +66,88 @@ int main(void){
 		tick++;
 		Delay_ms(500);//调用延时函数，等待500毫秒
 	}
+}*/
+
+
+
+
+#include "stm32f10x.h" // 包含头文件
+#include <stdio.h>     // 包含标准库以便使用printf
+
+// 简易软件延时
+void Delay_ms(unsigned int ms) {
+    unsigned int i, j;
+    for(i = 0; i < ms; i++) {
+        for(j = 0; j < 8000; j++) {
+            // 空循环，消耗时间
+        }
+    }
+}
+
+// 串口1初始化函数
+void USART1_Init(void) {
+    // 1. 开启时钟 (GPIOA 和 USART1)
+    RCC->APB2ENR |= (1 << 2);  
+    RCC->APB2ENR |= (1 << 14); 
+
+    // 2. 配置 GPIO (PA9发送，PA10接收)
+    GPIOA->CRH &= ~(0xF << 4); 
+    GPIOA->CRH |= (0xB << 4);  // PA9 复用推挽输出
+    GPIOA->CRH &= ~(0xF << 8); 
+    GPIOA->CRH |= (0x4 << 8);  // PA10 浮空输入
+
+    // 3. 配置串口参数 (115200波特率)
+    USART1->BRR = 0x0271; 
+    
+    // 4. 开启串口总开关、发送、接收、接收中断
+    USART1->CR1 |= (1 << 13) | (1 << 3) | (1 << 2) | (1 << 5); 
+
+    // 5. 配置 NVIC (嵌套向量中断控制器)
+    NVIC->ISER[1] |= (1 << 5); 
+}
+
+// 串口发送重定向 (printf)
+int fputc(int ch, FILE *f) {
+    USART1->DR = ch; 
+    while((USART1->SR & 0x40) == 0); 
+    return ch;
+}
+
+// 串口1中断服务函数
+void USART1_IRQHandler(void) {
+    char data; 
+    
+    // 检查是不是真的接收到了数据
+    if((USART1->SR & (1 << 5)) != 0) {
+        data = USART1->DR; // 读出数据
+        
+        // 1. 回显
+        printf("接收到: %c\r\n", data);
+        
+        // 2. 控制LED
+        if(data == '1') {
+            GPIOC->ODR &= ~(1 << 13); // 点亮 PC13
+        } else if (data == '0') {
+            GPIOC->ODR |= (1 << 13);  // 熄灭 PC13
+        }
+    }
+}
+
+// 主函数
+int main(void) {
+    // 初始化 PC13 用于控制 LED
+    RCC->APB2ENR |= (1 << 4);   // 开启 GPIOC 时钟
+    GPIOC->CRH &= ~(0xF << 20); // 清空 PC13 配置
+    GPIOC->CRH |= (0x2 << 20);  // PC13 推挽输出
+    GPIOC->ODR |= (1 << 13);    // 默认熄灭
+
+    USART1_Init(); // 初始化串口并开启中断
+
+    int tick = 1;  
+
+    while(1) {
+        printf("Heartbeat: %d\r\n", tick); 
+        tick++;         
+        Delay_ms(1000);  
+    }
 }
